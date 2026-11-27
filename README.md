@@ -2,10 +2,11 @@
 
 ## 症状与原因
 
-**典型症状**
-
-- 在 Chrome 里保存 Passkey / AgeKey 时完全无弹窗、直接卡死，再次点击提示“已有请求正在处理中”
-- 在 Telegram 等 App 里提示“无通行密钥应用”
+> [!WARNING]
+> **典型症状**
+>
+> - 在 Chrome 里保存 Passkey / AgeKey 时完全无弹窗、直接卡死，再次点击提示“已有请求正在处理中”
+> - 在 Telegram 等 App 里提示“无通行密钥应用”
 
 **根本原因**
 
@@ -84,3 +85,49 @@ settings put secure credential_service_primary "com.google.android.gms/com.googl
 settings delete secure credential_service
 settings delete secure credential_service_primary
 ```
+
+## 附：自动检测命令（查第三方提供方并写入）
+
+上面的方法只写谷歌一家。如果还装了第三方密码管理器（Bitwarden、1Password 等），用下面这组命令：自动查出本机装了哪些凭据服务、全部写入，主服务仍设为谷歌。
+
+注意：这组命令要在**同一个终端窗口**里按顺序粘贴执行（第 1 条查到的结果存在变量里，关掉窗口就没了）。
+
+第 1 条，查本机有哪些凭据服务：
+
+```bash
+SVCS=$(cmd package query-services --components -a android.service.credentials.CredentialProviderService | sed -E 's|^([^/]+)/\.|\1/\1.|' | tr '\n' ':' | sed 's/:$//'); echo "找到:"; echo "$SVCS" | tr ':' '\n'
+```
+
+显示为空就是一个都没查到，先确认 Google Play 服务已安装，别继续往下执行。查询结果里如果有 `包名/.` 开头的简写（比如谷歌那条），命令里已经自动展开成全名了，不用管。
+
+第 2 条，把查到的全部写入 credential_service：
+
+```bash
+settings put secure credential_service "$SVCS"
+```
+
+第 3 条，主服务设为谷歌：
+
+```bash
+settings put secure credential_service_primary "com.google.android.gms/com.google.android.gms.auth.api.credentials.credman.service.PasswordAndPasskeyService"
+```
+
+第 4 条，验证写入结果：
+
+```bash
+settings get secure credential_service
+settings get secure credential_service_primary
+```
+
+第一条显示的应该是第 1 条查到的全部服务，第二条应该是谷歌那一条；都对得上就是写成功了。对不上或为空，就是没写进去，回第二步检查 Shizuku 权限。确认无误后，强行停止 Chrome 再重新打开，试着保存一个 Passkey 验证。
+
+### 想把主服务换成第三方（比如 Bitwarden）
+
+主服务只能设一个，就是你想让它默认弹出来保存 / 填充的那个。第 2 条已经把全部提供方都写进去了，所以只需把第 1 条“找到：”里列出的某一条完整复制下来，替换下面命令引号里的内容再执行：
+
+```bash
+settings put secure credential_service_primary "包名/服务名"
+settings get secure credential_service_primary
+```
+
+第二条命令显示出来的就是当前主服务，核对是你要的那个即可。想换回谷歌，重新执行上面的第 3 条命令。
